@@ -8,10 +8,12 @@ import utils.utils as utils
 
 from PIL import Image
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
-from torch.autograd import Variable
 from torchvision.transforms import ToTensor
+
+
 
 parser = argparse.ArgumentParser(description='PyTorch LapSRN')
 parser.add_argument("--seed", default=1234, help="Seed value.")
@@ -44,24 +46,14 @@ def generate_bicubic(LR, scale):
     Bicubic_HR = LR.resize((LR.size[0]*scale, LR.size[1]*scale), Image.BICUBIC)
     return Bicubic_HR
 
-def psnr(target, ref, scale):
-    # target:目标图像  ref:参考图像  scale:尺寸大小
-    # assume RGB image
-    target_data = np.array(target)
-    target_data = target_data[scale:-scale,scale:-scale]
- 
-    ref_data = np.array(ref)
-    ref_data = ref_data[scale:-scale,scale:-scale]
- 
-    diff = ref_data - target_data
-    diff = diff.flatten('C')
-    rmse = math.sqrt( np.mean(diff ** 2.) )
-    return 20*math.log10(1.0/rmse)
 
 def PSNR(pred, gt, scale=0):
-    height, width = pred.shape[:2]
-    pred = pred[scale:height - scale, scale:width - scale]
-    gt = gt[scale:height - scale, scale:width - scale]
+    pred_data = np.array(pred)
+    gt_data = np.array(gt)
+
+    height, width = pred_data.shape[:2]
+    pred = pred_data[scale:height - scale, scale:width - scale]
+    gt = gt_data[scale:height - scale, scale:width - scale]
     imdff = pred - gt
     rmse = math.sqrt(np.mean(imdff ** 2))
     if rmse == 0:
@@ -92,7 +84,7 @@ if __name__ == "__main__":
     LR_x2_image = img.resize((int(img.size[0]/4), int(img.size[1]/4)), Image.BICUBIC)
     LR_x4_image = img.resize((int(img.size[0]/2), int(img.size[1]/2)), Image.BICUBIC)
     LR_x8_image = img.resize((int(img.size[0]/1), int(img.size[1]/1)), Image.BICUBIC)
-
+    # _, cb, cr = LR_x8_image.split()
     y, cb, cr = LR_image.split()
     LR = ToTensor()(y).view(1, -1, y.size[1], y.size[0]).to(params.device)
 
@@ -129,12 +121,27 @@ if __name__ == "__main__":
     HR_4.save("HR_x4.png")
     HR_8.save("HR_x8.png")
 
-    psnr_predicted_x2 = psnr(HR_2, LR_x2_image, scale=2)
-    psnr_bicubic_x2 = psnr(bi_HR_2, LR_x2_image, scale=2)
-    psnr_predicted_x4 = psnr(HR_4, LR_x4_image, scale=4)
-    psnr_bicubic_x4 = psnr(bi_HR_4, LR_x4_image, scale=4)
-    psnr_predicted_x8 = psnr(HR_8, LR_x8_image, scale=8)
-    psnr_bicubic_x8 = psnr(bi_HR_8, LR_x8_image, scale=8)
+    psnr_predicted_x2 = PSNR(HR_2, LR_x2_image, scale=2)
+    psnr_bicubic_x2 = PSNR(bi_HR_2, LR_x2_image, scale=2)
+    psnr_predicted_x4 = PSNR(HR_4, LR_x4_image, scale=4)
+    psnr_bicubic_x4 = PSNR(bi_HR_4, LR_x4_image, scale=4)
+    psnr_predicted_x8 = PSNR(HR_8, LR_x8_image, scale=8)
+    psnr_bicubic_x8 = PSNR(bi_HR_8, LR_x8_image, scale=8)
+
+    fig = plt.figure()
+    ax = plt.subplot("131")
+    ax.imshow(LR_x8_image, cmap='gray')
+    ax.set_title("GT")
+
+    ax = plt.subplot("132")
+    ax.imshow(bi_HR_8, cmap='gray')
+    ax.set_title("Output(Bicubic) x8")
+
+    ax = plt.subplot("133")
+    ax.imshow(HR_8, cmap='gray')
+    ax.set_title("Output(LapSRN) x8")
+    plt.show()
+
     
     print('- Eval PSNR Scale 2: Predict: {}, Bicubic: {}'.format(psnr_predicted_x2, psnr_bicubic_x2 ))
     print('- Eval PSNR Scale 4: Predict: {}, Bicubic: {}'.format(psnr_predicted_x4, psnr_bicubic_x4 ))

@@ -9,6 +9,7 @@ import torch.utils.data as data
 import torchvision
 
 
+
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in [".png", ".jpg", ".jpeg", ".bmp"])
 
@@ -61,6 +62,7 @@ class TestDataset(data.Dataset):
     def __init__(self, image_dir, crop_size):
         super(TestDataset, self).__init__()
         self.image_filenames = [os.path.join(image_dir, x) for x in os.path.listdir(image_dir) if is_image_file(x)]
+        
         self.center_transform = Center_transform(crop_size)
         self.LR_transform = LR_transform(crop_size)
         self.HR_2_transform = HR_2_transform(crop_size)
@@ -72,14 +74,15 @@ class TestDataset(data.Dataset):
         image = self.Center_transform(image)
         y, _, _ = image.split()
         
-        HR_8 = self.Center_transform(y)
-        HR_4 = self.HR_4_transform(HR_8)
-        HR_2 = self.HR_2_transform(HR_8)
-        LR = self.LR_transform(HR_8)
-        to_tensor = torchvision.transforms.ToTensor()
-        HR_8 = to_tensor(HR_8)
+        to_PIL = torchvision.transforms.ToPILImage()
 
-        return image, LR, HR_2, HR_4, HR_8
+        HR_8 = image
+        HR_4 = to_PIL(self.HR_4_transform(image))
+        HR_2 = to_PIL(self.HR_2_transform(image))
+
+        LR = to_PIL(self.LR_transform(y))
+
+        return LR, HR_2, HR_4, HR_8
 
     def __len__(self):
         return len(self.image_filenames)
