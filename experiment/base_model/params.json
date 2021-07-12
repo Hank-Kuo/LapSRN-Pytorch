@@ -1,0 +1,9 @@
+{
+    "learning_rate": 0.0001,
+    "batch_size": 30,
+
+        
+    "epochs": 100,
+    "valid_every": 5,
+    "patience": 5
+}
