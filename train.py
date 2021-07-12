@@ -17,16 +17,16 @@ parser = argparse.ArgumentParser(description="PyTorch LapSRN")
 parser.add_argument("--dataset_path", default="./data", help="Path to dataset.")
 parser.add_argument("--model_dir", default="./experiments/base_model", help="Path to model checkpoint (by default train from scratch).")
 
-def adjust_learning_rate(optimizer, epoch):
+def adjust_learning_rate(optimizer, params_lr, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
-    lr = opt.lr * (0.1 ** (epoch // opt.step))
+    lr = params_lr * (0.1 ** (epoch // 10))
     return lr
 
 def main():
     args = parser.parse_args()
 
-     # torch setting
-    torch.random.manual_seed(args.seed)
+    # torch setting
+    torch.random.manual_seed(1234)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
@@ -44,25 +44,26 @@ def main():
     
     # dataset
     print("===> Loading datasets")
-    train_set = data_loader.DatasetFromFolder(train_dir, crop_size=128)
+    train_set = data_loader.DatasetFromFolder(train_dir, crop_size=64)
     training_data_loader = DataLoader(dataset=train_set, batch_size=params.batch_size, shuffle=True)
 
     # Net
     print("===> Building model")
     model = net.Net()
-    criterion = net.L1_Charbonnier_loss()
-    
+    model = model.to(params.device)
+    criterion = net.L1_Charbonnier_loss().to(params.device)
+
     optimizer = optim.Adam(model.parameters(), lr=params.learning_rate)
     print(model)
 
     logging.info("Starting training...")
-    for epoch_id in range(1, params.epoch + 1): 
+    for epoch_id in range(1, params.epochs + 1): 
         print("Epoch {}/{}".format(epoch_id, params.epochs))
         model.train()
         running_loss = 0
         
         # adjust learning rate
-        lr = adjust_learning_rate(optimizer, epoch_id-1)
+        lr = adjust_learning_rate(optimizer, params.learning_rate, epoch_id-1)
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
         
@@ -70,21 +71,22 @@ def main():
         with tqdm(total=len(training_data_loader)) as t:
             for i_batch, batch in enumerate(training_data_loader):
                 LR, HR_2_target, HR_4_target, HR_8_target = Variable(batch[0]), Variable(batch[1]), Variable(batch[2]), Variable(batch[3])
-
-                LR = LR.to(params.device))
+    
+                LR = LR.to(params.device)
                 HR_2_target = HR_2_target.to(params.device)
                 HR_4_target = HR_4_target.to(params.device)
                 HR_8_target = HR_8_target.to(params.device)
-
+                
                 optimizer.zero_grad()
                 HR_2x, HR_4x, HR_8x = model(LR)
-                
+
                 loss_x2 = criterion(HR_2x, HR_2_target)
                 loss_x4 = criterion(HR_4x, HR_4_target)
                 loss_x8 = criterion(HR_8x, HR_8_target)
 
                 loss = loss_x2 + loss_x4 + loss_x8
-                running_loss += loss.data[0].item()
+                par
+                running_loss += loss.item()
 
                 loss.backward()
                 optimizer.step()

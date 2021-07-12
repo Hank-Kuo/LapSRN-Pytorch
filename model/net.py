@@ -1,112 +1,113 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import torch.nn.init as init
+import math
 
-##https://warmspringwinds.github.io/tensorflow/tf-slim/2016/11/22/upsampling-and-image-segmentation-with-tensorflow-and-tf-slim/
-
-
-def upsample_filt(size):
-    """
-    Make a 2D bilinear kernel suitable for upsampling of the given (h, w) size.
-    """
+def get_upsample_filter(size):
+    """Make a 2D bilinear kernel suitable for upsampling"""
     factor = (size + 1) // 2
     if size % 2 == 1:
         center = factor - 1
     else:
         center = factor - 0.5
     og = np.ogrid[:size, :size]
-    return (1 - abs(og[0] - center) / factor) * \
-           (1 - abs(og[1] - center) / factor)
+    filter = (1 - abs(og[0] - center) / factor) * \
+             (1 - abs(og[1] - center) / factor)
+    return torch.from_numpy(filter).float()
 
+class _Conv_Block(nn.Module):    
+    def __init__(self):
+        super(_Conv_Block, self).__init__()
+        
+        self.cov_block = nn.Sequential(
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.ConvTranspose2d(in_channels=64, out_channels=64, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
+        
+    def forward(self, x):  
+        output = self.cov_block(x)
+        return output 
 
-def bilinear_upsample_weights(filter_size, weights):
-    """
-    Create weights matrix for transposed convolution with bilinear filter
-    initialization.
-    """
-    f_out = weights.size(0)
-    f_in = weights.size(1)
-    weights = np.zeros((f_out,
-                        f_in,
-                        4,
-                        4), dtype=np.float32)
-    
-    upsample_kernel = upsample_filt(filter_size)
-    
-    for i in xrange(f_out):
-        for j in xrange(f_in):
-            weights[i, j, :, :] = upsample_kernel
-    return torch.Tensor(weights)        
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        
+        self.conv_input = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.relu = nn.LeakyReLU(0.2, inplace=True)
+        
+        self.convt_I1 = nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=4, stride=2, padding=1, bias=False)
+        self.convt_R1 = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
+        self.convt_F1 = self.make_layer(_Conv_Block)
+  
+        self.convt_I2 = nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=4, stride=2, padding=1, bias=False)
+        self.convt_R2 = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
+        self.convt_F2 = self.make_layer(_Conv_Block)  
 
+        self.convt_I3 = nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=4, stride=2, padding=1, bias=False)
+        self.convt_R3 = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
+        self.convt_F3 = self.make_layer(_Conv_Block)    
+        
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            if isinstance(m, nn.ConvTranspose2d):
+                c1, c2, h, w = m.weight.data.size()
+                weight = get_upsample_filter(h)
+                m.weight.data = weight.view(1, 1, h, w).repeat(c1, c2, 1, 1)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+                    
+    def make_layer(self, block):
+        layers = []
+        layers.append(block())
+        return nn.Sequential(*layers)
 
-    
-class FeatureExtraction(nn.Module):
-    def __init__(self, level):
-        super(FeatureExtraction, self).__init__()
-        if level==1:
-            self.conv0 = nn.Conv2d(1, 64, (3, 3), (1, 1), (1, 1))
-        else:
-            self.conv0 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
-        self.conv1 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
-        self.conv2 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
-        self.conv3 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
-        self.conv4 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
-        self.conv5 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
-        self.convt_F = nn.ConvTranspose2d(64, 64, (4, 4), (2, 2), (1, 1))
-        self.LReLus = nn.LeakyReLU(negative_slope=0.2)
-        self.convt_F.weight.data.copy_(bilinear_upsample_weights(4, self.convt_F.weight))
+    def forward(self, x):    
+        out = self.relu(self.conv_input(x))
+        
+        convt_F1 = self.convt_F1(out)
+        convt_I1 = self.convt_I1(x)
+        convt_R1 = self.convt_R1(convt_F1)
+        HR_2x = convt_I1 + convt_R1
+        
+        convt_F2 = self.convt_F2(convt_F1)
+        convt_I2 = self.convt_I2(HR_2x)
+        convt_R2 = self.convt_R2(convt_F2)
+        HR_4x = convt_I2 + convt_R2
+
+        convt_F3 = self.convt_F3(convt_F2)
+        convt_I3 = self.convt_I3(HR_4x)
+        convt_R3 = self.convt_R3(convt_F3)
+        HR_8x = convt_I3 + convt_R3
        
-    def forward(self, x):
-        out = self.LReLus(self.conv0(x))
-        out = self.LReLus(self.conv1(out))
-        out = self.LReLus(self.conv2(out))
-        out = self.LReLus(self.conv3(out))
-        out = self.LReLus(self.conv4(out))
-        out = self.LReLus(self.conv5(out))
-        out = self.LReLus(self.convt_F(out))
-        return out
+        return HR_2x, HR_4x, HR_8x
+        
 
 
-class ImageReconstruction(nn.Module):
-    def __init__(self):
-        super(ImageReconstruction, self).__init__()
-        self.conv_R = nn.Conv2d(64, 1, (3, 3), (1, 1), (1, 1))
-        self.convt_I = nn.ConvTranspose2d(1, 1, (4, 4), (2, 2), (1, 1))
-        self.convt_I.weight.data.copy_(bilinear_upsample_weights(4, self.convt_I.weight))     
-        
-    def forward(self, LR, convt_F):
-        convt_I = self.convt_I(LR)
-        conv_R = self.conv_R(convt_F)
-        
-        HR = convt_I+conv_R
-        return HR
-        
-        
-class LasSRN(nn.Module):
-    def __init__(self):
-        super(LasSRN, self).__init__()
-        self.FeatureExtraction1 = FeatureExtraction(level=1)
-        self.FeatureExtraction2 = FeatureExtraction(level=2)
-        self.FeatureExtraction3 = FeatureExtraction(level=3)
-        self.ImageReconstruction1 = ImageReconstruction()
-        self.ImageReconstruction2 = ImageReconstruction()
-        self.ImageReconstruction3 = ImageReconstruction()
 
-    def forward(self, LR):
-        
-        convt_F1 = self.FeatureExtraction1(LR)
-        HR_2 = self.ImageReconstruction1(LR, convt_F1)
-        
-        convt_F2 = self.FeatureExtraction2(convt_F1)
-        HR_4 = self.ImageReconstruction2(HR_2, convt_F2)
-        
-        convt_F3 = self.FeatureExtraction3(convt_F2)
-        HR_8 = self.ImageReconstruction3(HR_4, convt_F3)
-        
-        return HR_2, HR_4, HR_8
- 
-        
 class L1_Charbonnier_loss(nn.Module):
     """L1 Charbonnierloss."""
     def __init__(self):

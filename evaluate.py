@@ -1,15 +1,7 @@
 import argparse
 import torch
 from torch.autograd import Variable
-import numpy as np
-import time, math
-import matplotlib.pyplot as plt
-import os
-import sys
-import math
 import torch
-import numpy as np
-import cv2
 
 parser = argparse.ArgumentParser(description="PyTorch LapSRN Demo")
 

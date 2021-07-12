@@ -1,7 +1,7 @@
 import os 
 import random
 
-from transform import LR_transform, HR_2_transform, HR_4_transform, HR_8_transform, Center_transform
+from model.transform import LR_transform, HR_2_transform, HR_4_transform, HR_8_transform, Center_transform
 
 from PIL import Image
 import numpy as np
@@ -34,7 +34,7 @@ class DatasetFromFolder(data.Dataset):
     def __init__(self, image_dir, crop_size):
         super(DatasetFromFolder, self).__init__()
         
-        self.image_filenames = [os.path.join(image_dir, x) for x in os.path.listdir(image_dir) if is_image_file(x)]
+        self.image_filenames = [os.path.join(image_dir, x) for x in os.listdir(image_dir) if is_image_file(x)]
 
         self.LR_transform = LR_transform(crop_size)
         self.HR_2_transform = HR_2_transform(crop_size)
@@ -44,7 +44,6 @@ class DatasetFromFolder(data.Dataset):
 
     def __getitem__(self, index):
         origin = augment_data(self.image_filenames[index])
-        
         HR_8 = self.HR_8_transform(origin)
         HR_4 = self.HR_4_transform(HR_8)
         HR_2 = self.HR_2_transform(HR_8)
@@ -62,7 +61,7 @@ class TestDataset(data.Dataset):
     def __init__(self, image_dir, crop_size):
         super(TestDataset, self).__init__()
         self.image_filenames = [os.path.join(image_dir, x) for x in os.path.listdir(image_dir) if is_image_file(x)]
-        self.center_transform = center_transform(crop_size)
+        self.center_transform = Center_transform(crop_size)
         self.LR_transform = LR_transform(crop_size)
         self.HR_2_transform = HR_2_transform(crop_size)
         self.HR_4_transform = HR_4_transform(crop_size)
