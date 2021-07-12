@@ -85,7 +85,6 @@ def main():
                 loss_x8 = criterion(HR_8x, HR_8_target)
 
                 loss = loss_x2 + loss_x4 + loss_x8
-                par
                 running_loss += loss.item()
 
                 loss.backward()
